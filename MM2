@@ -1,0 +1,426 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Executor & FPS Logic
+local executor = identifyexecutor and identifyexecutor() or "Unknown"
+local currentFPS = 0
+
+-- Window Setup
+local Window = Rayfield:CreateWindow({
+   Name = "Murder Mystery Hub | v1.0",
+   LoadingTitle = "Executing..",
+   LoadingSubtitle = "by Justin",
+   ConfigurationSaving = { Enabled = true, FolderName = "Script", FileName = "MM2Config" },
+   KeySystem = true,
+   KeySettings = {
+      Title = "Key System",
+      Subtitle = "Enter Key",
+      Note = "Discord: https://discord.gg/BhXZzkPGYk",
+      FileName = "Key",
+      SaveKey = false,
+      Key = {"Justin-MM215"}
+   }
+})
+
+-- Services
+local RunService = game:GetService("RunService")
+local Plrs = game:GetService("Players")
+local lp = Plrs.LocalPlayer
+
+-- Variables
+local SelectedPlayer = nil
+_G.FlingActive = false
+
+-- [[ INFORMATION TAB ]] --
+local InfoTab = Window:CreateTab("Information", 4483362458)
+local ExecLabel = InfoTab:CreateLabel("Executed with: [" .. executor .. "]")
+local FPSLabel = InfoTab:CreateLabel("FPS: Loading...")
+
+task.spawn(function()
+    while task.wait(1) do
+        currentFPS = math.floor(workspace:GetRealPhysicsFPS())
+        FPSLabel:Set("FPS: " .. tostring(currentFPS))
+    end
+end)
+
+-- [[ MOVEMENT TAB ]] --
+local MovementTab = Window:CreateTab("Movement", 4483362458)
+MovementTab:CreateSection("Fly & Speed")
+
+local flying = false
+local flySpeed = 50
+local bv, bg
+
+MovementTab:CreateToggle({
+   Name = "Smooth Fly (E = Up, Q = Down)",
+   CurrentValue = false,
+   Callback = function(Value)
+       flying = Value
+       local char = lp.Character
+       local hum = char and char:FindFirstChildOfClass("Humanoid")
+       local root = char and char:FindFirstChild("HumanoidRootPart")
+       if not root or not hum then return end
+
+       if flying then
+           char.Animate.Disabled = true
+           hum:ChangeState(Enum.HumanoidStateType.Swimming)
+           hum.PlatformStand = true
+           bg = Instance.new("BodyGyro", root)
+           bg.P = 9e4
+           bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+           bg.cframe = root.CFrame
+           bv = Instance.new("BodyVelocity", root)
+           bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
+
+           task.spawn(function()
+               while flying do
+                   RunService.RenderStepped:Wait()
+                   local cam = workspace.CurrentCamera.CFrame
+                   local moveDir = hum.MoveDirection
+                   local velocity = Vector3.new(0,0,0)
+
+                   if moveDir.Magnitude > 0 then
+                       velocity = ((cam.LookVector * -moveDir.Z) + (cam.RightVector * moveDir.X)).Unit * flySpeed
+                   end
+                   
+                   if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.E) then
+                       velocity = velocity + Vector3.new(0, flySpeed, 0)
+                   elseif game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.Q) then
+                       velocity = velocity + Vector3.new(0, -flySpeed, 0)
+                   end
+                   bv.velocity = velocity
+                   bg.cframe = cam
+               end
+           end)
+       else
+           if bv then bv:Destroy() end
+           if bg then bg:Destroy() end
+           hum.PlatformStand = false
+           char.Animate.Disabled = false
+           hum:ChangeState(Enum.HumanoidStateType.Running)
+       end
+   end,
+})
+
+MovementTab:CreateSlider({
+   Name = "Fly Speed",
+   Range = {10, 500},
+   Increment = 5,
+   CurrentValue = 50,
+   Callback = function(Value) flySpeed = Value end,
+})
+
+MovementTab:CreateSlider({
+   Name = "WalkSpeed Hack",
+   Range = {16, 250},
+   Increment = 1,
+   CurrentValue = 16,
+   Callback = function(Value)
+       if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+           lp.Character.Humanoid.WalkSpeed = Value
+       end
+   end,
+})
+
+MovementTab:CreateToggle({
+   Name = "Noclip",
+   CurrentValue = false,
+   Callback = function(Value)
+       _G.Noclip = Value
+       game:GetService("RunService").Stepped:Connect(function()
+           if _G.Noclip and lp.Character then
+               for _, v in pairs(lp.Character:GetDescendants()) do
+                   if v:IsA("BasePart") then
+                       v.CanCollide = false
+                   end
+               end
+           end
+       end)
+   end,
+})
+
+-- [[ FLING LOGIC (Ohne GUI) ]] --
+local function SkidFling(TargetPlayer)
+    local Character = lp.Character
+    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart = Humanoid and Humanoid.RootPart
+    local TCharacter = TargetPlayer.Character
+    if not TCharacter then return end
+    
+    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+    local TRootPart = THumanoid and THumanoid.RootPart
+    local THead = TCharacter:FindFirstChild("Head")
+    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+    local Handle = Accessory and Accessory:FindFirstChild("Handle")
+    
+    if Character and Humanoid and RootPart then
+        if RootPart.Velocity.Magnitude < 50 then
+            getgenv().OldPos = RootPart.CFrame
+        end
+        if THumanoid and THumanoid.Sit then return end
+        
+        -- Kamera auf Ziel setzen (wichtig fÃ¼r Physics-Laden im Original-Script)
+        if THead then workspace.CurrentCamera.CameraSubject = THead
+        elseif Handle then workspace.CurrentCamera.CameraSubject = Handle
+        elseif THumanoid and TRootPart then workspace.CurrentCamera.CameraSubject = THumanoid end
+        
+        if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
+        
+        local FPos = function(BasePart, Pos, Ang)
+            RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+            Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+            RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+            RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end
+        
+        local SFBasePart = function(BasePart)
+            local TimeToWait = 2
+            local Time = tick()
+            local Angle = 0
+            repeat
+                if RootPart and THumanoid then
+                    if BasePart.Velocity.Magnitude < 50 then
+                        Angle = Angle + 100
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                        task.wait()
+                    else
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                        task.wait()
+                        FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                        task.wait()
+                    end
+                end
+            until Time + TimeToWait < tick() or not _G.FlingActive
+        end
+        
+        getgenv().FPDH = workspace.FallenPartsDestroyHeight
+        workspace.FallenPartsDestroyHeight = 0/0
+        
+        local BV = Instance.new("BodyVelocity")
+        BV.Parent = RootPart
+        BV.Velocity = Vector3.new(0, 0, 0)
+        BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+        
+        if TRootPart then SFBasePart(TRootPart)
+        elseif THead then SFBasePart(THead)
+        elseif Handle then SFBasePart(Handle) end
+        
+        BV:Destroy()
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+        workspace.CurrentCamera.CameraSubject = Humanoid
+        
+        if getgenv().OldPos then
+            repeat
+                RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
+                Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
+                Humanoid:ChangeState("GettingUp")
+                for _, part in pairs(Character:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+                    end
+                end
+                task.wait()
+            until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
+            workspace.FallenPartsDestroyHeight = getgenv().FPDH
+        end
+    end
+end
+
+-- [[ PLAYERS TAB ]] --
+local PlayersTab = Window:CreateTab("Players", 4483362458)
+PlayersTab:CreateSection("Target Selection")
+
+local function getPlayerNames()
+    local names = {}
+    for _, v in pairs(Plrs:GetPlayers()) do
+        if v.Name ~= lp.Name then table.insert(names, v.Name) end
+    end
+    if #names == 0 then table.insert(names, "Keine anderen Spieler") end
+    return names
+end
+
+local PlayerDropdown = PlayersTab:CreateDropdown({
+   Name = "Choose Player",
+   Options = getPlayerNames(),
+   CurrentOption = {""},
+   MultipleOptions = false,
+   Callback = function(Option)
+       SelectedPlayer = type(Option) == "table" and Option[1] or Option
+   end,
+})
+
+PlayersTab:CreateButton({
+   Name = "Refresh Player List",
+   Callback = function()
+       PlayerDropdown:Refresh(getPlayerNames(), true)
+   end,
+})
+
+PlayersTab:CreateSection("Actions")
+
+PlayersTab:CreateButton({
+   Name = "Teleport to Player",
+   Callback = function()
+       if SelectedPlayer and Plrs:FindFirstChild(SelectedPlayer) then
+           local target = Plrs[SelectedPlayer].Character
+           if target and target:FindFirstChild("HumanoidRootPart") then
+               lp.Character.HumanoidRootPart.CFrame = target.HumanoidRootPart.CFrame
+           end
+       end
+   end,
+})
+
+-- NEUE FLING LOGIK
+local flingLoopTarget = false
+PlayersTab:CreateToggle({
+   Name = "Loop Fling Selected Player",
+   CurrentValue = false,
+   Callback = function(Value)
+       flingLoopTarget = Value
+       _G.FlingActive = Value
+       if Value then
+           task.spawn(function()
+               while flingLoopTarget do
+                   if SelectedPlayer and Plrs:FindFirstChild(SelectedPlayer) then
+                       SkidFling(Plrs[SelectedPlayer])
+                   end
+                   task.wait(0.1)
+               end
+           end)
+       end
+   end,
+})
+
+local flingAllTarget = false
+PlayersTab:CreateToggle({
+   Name = "Loop Fling ALL Players",
+   CurrentValue = false,
+   Callback = function(Value)
+       flingAllTarget = Value
+       _G.FlingActive = Value
+       if Value then
+           task.spawn(function()
+               while flingAllTarget do
+                   for _, p in pairs(Plrs:GetPlayers()) do
+                       if p ~= lp and flingAllTarget then
+                           SkidFling(p)
+                           task.wait(0.1)
+                       end
+                   end
+                   task.wait(0.5)
+               end
+           end)
+       end
+   end,
+})
+
+-- [[ COMBAT TAB ]] --
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+CombatTab:CreateButton({
+   Name = "Kill Murderer (Sheriff Only)",
+   Callback = function()
+       local murderer = nil
+       for _, v in pairs(Plrs:GetPlayers()) do
+           if v.Backpack:FindFirstChild("Knife") or v.Character:FindFirstChild("Knife") then
+               murderer = v; break
+           end
+       end
+       if murderer and murderer.Character and murderer.Character:FindFirstChild("HumanoidRootPart") then
+           lp.Character.HumanoidRootPart.CFrame = murderer.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+       else
+           Rayfield:Notify({Title = "Error", Content = "Murderer not found!", Duration = 3})
+       end
+   end,
+})
+
+CombatTab:CreateButton({
+   Name = "Kill All (Murderer Only)",
+   Callback = function()
+       local knife = lp.Backpack:FindFirstChild("Knife") or lp.Character:FindFirstChild("Knife")
+       if not knife then return end
+       for _, v in pairs(Plrs:GetPlayers()) do
+           if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+               lp.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 1)
+               task.wait(0.1)
+               knife:Activate()
+           end
+       end
+   end,
+})
+
+CombatTab:CreateToggle({
+   Name = "Player ESP",
+   CurrentValue = false,
+   Callback = function(Value)
+       _G.ESPActive = Value
+       if Value then
+           task.spawn(function()
+               while _G.ESPActive do
+                   for _, v in pairs(game:GetService("Players"):GetPlayers()) do
+                       if v ~= lp and v.Character then
+                           -- Erstelle Highlight falls nicht vorhanden
+                           local h = v.Character:FindFirstChild("ESPHighlight") or Instance.new("Highlight")
+                           h.Name = "ESPHighlight"
+                           h.Parent = v.Character
+                           h.OutlineTransparency = 0
+                           h.FillTransparency = 0.5
+
+                           -- Rollen-Farben Check
+                           if v.Backpack:FindFirstChild("Knife") or v.Character:FindFirstChild("Knife") then
+                               h.FillColor = Color3.fromRGB(255, 0, 0) -- MÃ¶rder
+                           elseif v.Backpack:FindFirstChild("Gun") or v.Character:FindFirstChild("Gun") then
+                               h.FillColor = Color3.fromRGB(0, 0, 255) -- Sheriff
+                           else
+                               h.FillColor = Color3.fromRGB(0, 255, 0) -- Innocent
+                           end
+                       end
+                   end
+                   task.wait(1)
+               end
+           end)
+       else
+           -- ESP entfernen wenn ausgeschaltet
+           for _, v in pairs(game:GetService("Players"):GetPlayers()) do
+               if v.Character and v.Character:FindFirstChild("ESPHighlight") then
+                   v.Character.ESPHighlight:Destroy()
+               end
+           end
+       end
+   end,
+})
+
+-- [[ TELEPORTS TAB ]] --
+local TeleportTab = Window:CreateTab("Teleports", 4483362458)
+TeleportTab:CreateButton({Name = "TP to Lobby", Callback = function() lp.Character.HumanoidRootPart.CFrame = CFrame.new(362, 528, 0) end})
+TeleportTab:CreateButton({Name = "TP to Gun & Return", Callback = function() 
+    local g = workspace:FindFirstChild("GunDrop", true)
+    if g then
+        local p = lp.Character.HumanoidRootPart.CFrame
+        lp.Character.HumanoidRootPart.CFrame = g.CFrame
+        task.wait(0.5)
+        lp.Character.HumanoidRootPart.CFrame = p
+    end
+end})
+
+Rayfield:Notify({Title = "Update 1.0", Content = "Works", Duration = 5})
